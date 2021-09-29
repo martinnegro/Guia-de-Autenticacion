@@ -42,23 +42,3 @@ const JWT = headerBase64url + '.' + payloadBase64url + '.' + signatureBase64url;
 module.exports = {
     JWT
 }
-
-
-
-// const JWT = 'eyJhbGciOiJSUzI1NiIsInR5cGUiOiJKV1QifQ.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.F4SZ0OyVkxsZvQS_Gw3AFKUz7VVKGhjfkKB0xIkymwLbNyUgSVVeBZFiAQyZQjUeuS-4gLPGwCJ4xj_HQsLsJllKejMlUg3oh0WnI0Z07FEqum4opVPNCMj1xKXMW3ioSxJfbMkSpJTeVZPdZgRCpp_LjKpg3sfdOl3_bnlsMILmRlqMuYsM9Qdm5-6v_WiJzGDMnLYs2WpyyXwqaPk7EoQWAU';
-
-// // Dividimos el JWT en cada una de sus partes
-// const JWTParts = JWT.split('.');
-// // Y los guardamos en distintas constantes
-// const headerInBase64Url    = JWTParts[0];
-// const payloadInBase64Url   = JWTParts[1];
-// const signatureInBase64Url = JWTParts[2];
-
-// // Decodificamos las partes con la librería base64url
-// const decodeHeader    = base64url.decode(headerInBase64Url); 
-// const decodePayload   = base64url.decode(payloadInBase64Url); 
-// const decodeSignature = base64url.decode(signatureInBase64Url); 
-
-// console.log(decodeHeader);
-// console.log(decodePayload);
-// console.log(decodeSignature);

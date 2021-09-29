@@ -12,15 +12,15 @@ Se deben tener conocimientos previos sobre Node, Express (y el funcionamiento de
 
 #### Antes de comenzar:
 - En este texto no se explica de que manera conectar el servidor a la base de datos, ni como configurar las tablas. Si necesitas reforzar estos conceptos, es recomendable buscar fuentes que lo expliquen y luego retomar esta guía.
+- Tampoco se explica como guardar el JWT desde el lado del cliente ni como adjuntarlo a las peticiones. La guía está dirigida exclusivamente al backend. Para probar las rutas, recomiendo utilizar la extensión de VSCode [REST Client](https://marketplace.visualstudio.com/items?itemName=humao.rest-client) que permite realizar peticiones tal como se encuentran aquí, aunque se puede usar cualquier tipo de aplicación como Postman.
 - Se usarán conceptos de criptografía, pero no se proveerá de una explicación profunda porque excede el objetivo. Sí se abordarán conceptos generales para entender cómo aplicar la tecnología en nuestra autenticación y porqué es importante.
-- La implementación del front es indistinta, puede ser React, Angular o cualquier otro framework. Lo importante a tener en cuenta es que vamos a estar haciendo peticiones POST en cuyo body se encontrarán los datos necesarios (email y password).
 
 ## Creando passwords
 
 Para poder autenticar un usuario, primero hay que crearlo y guardar bien la contraseña.
 A modo de ejemplo, tomemos la siguiente solicitud POST:
 ``` http
-POST http://localhost:3002/signup
+POST http://localhost:3001/signup
 Content-Type: application/json
 
 {
@@ -349,7 +349,7 @@ const receivedData = require('./signMessage').packageOfData;
 // Cargamos nuestra clave pública.
 const publicKey = fs.readFileSync(__dirname + '/id_rsa_pub.pem','utf8');
 
-// Utilizamos el método decrypt que creamos anteriormente
+git push --set-upstream origin main// Utilizamos el método decrypt que creamos anteriormente
 // y le pasamos la clave pública y los datos firmados
 const decryptedData = decrypt.withPublicKey(publicKey, receivedData.signedAndEncryptedData);
 const decryptedDataHex =  decryptedData.toString();
@@ -411,6 +411,10 @@ La firma digital va a depender principalmente del algoritmo utilizado. En el lin
 Para continuar con lo aprendido en la sección de Public Key Cryptography, vamos a usar la especificación [RS256](), que nos indica que:
 - Necesitamos tener una clave privada y una pública de tipo `rsa`.
 - Usaremos la función de hashing `'sha256` para obtener los headers payload y data.
+
+Si bien es posible crear tokens con otros algoritmos, la lógica que da seguridad a los JWT en este caso es la criptografía asimétrica. La firma digital creada con nuestra Clave Privada (y que no compartimos con nadie), permite que cualquiera con la Clave Pública (o nosotros en nuestro servidor) pueda verificar la autenticidad del token y la información que transporta, ya que si se ha firmado con otra Clave Privada o los datos han sido alterados no se podrá verificar la autenticidad del token.
+
+Recordemos que las claves están conectadas matemáticamente y es posible derivar la pública de la privada, pero no realizar el camino inverso.
 
 ### Flujo de JWT
 
@@ -728,3 +732,6 @@ Si nuestro token es válido, la ruta responderá satisfactoriamente, en caso con
 
 ## Conclusión
 
+Aprendimos a guardar de manera segura las passwords de nuestros usuarios, como está compuesto un Json Web Token, para que sirve y a usar Criptografía Asimétrica (o de Clave Pública) para firmar digitalmente los tokens que emitimos y poder validar las identidades de quiénes quieren acceder a nuestras rutas protegidas.
+
+La información que se encuentra aquí es exclusiva del lado del servidor y no contempla la implementación del lado del cliente, aunque en el futuro habrá una guía de frontend para finalizar los conceptos de JWT y poder usar todo su potencial.
