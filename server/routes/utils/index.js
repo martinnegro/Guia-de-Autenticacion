@@ -14,7 +14,31 @@ const validatePassword = (password, hash, salt) => {
     return hash === genHash;
 };
 
+
+const fs = require('fs');
+const jwt = require('jsonwebtoken');
+
+const PRIV_KEY = fs.readFileSync(__dirname + '/../../cryptography/id_rsa_priv.pem')
+
+const issueJWT = (user) => {
+    const { ID } = user;
+    
+    const expiresIn = '1d';
+    const payload =  {
+        sub: ID,
+        iat: Date.now()
+    };
+
+    const signedToken = jwt.sign(payload, PRIV_KEY, { expiresIn, algorithm: 'RS256' });
+
+    return {
+        token: 'Bearer ' + signedToken,
+        expires: expiresIn
+    }
+};
+
 module.exports = {
     genPassword,
-    validatePassword
+    validatePassword,
+    issueJWT
 };

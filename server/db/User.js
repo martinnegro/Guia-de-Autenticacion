@@ -4,6 +4,12 @@ module.exports = (sequelize) => {
 	sequelize.define(
 		'user',
 		{
+			ID: {
+				type: DataTypes.INTEGER,
+				primaryKey: true,
+				autoIncrement: true,
+				allowNull: false
+			},
 			email: {
 				type: DataTypes.STRING,
 			},
@@ -13,7 +19,6 @@ module.exports = (sequelize) => {
 			salt: {
 				type: DataTypes.STRING,
 			},
-        },
-		{ timestamps: true }
+        }
 	);
 };

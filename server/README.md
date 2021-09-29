@@ -15,10 +15,6 @@ Se deben tener conocimientos previos sobre Node, Express (y el funcionamiento de
 - Se usarán conceptos de criptografía, pero no se proveerá de una explicación profunda porque excede el objetivo. Sí se abordarán conceptos generales para entender cómo aplicar la tecnología en nuestra autenticación y porqué es importante.
 - La implementación del front es indistinta, puede ser React, Angular o cualquier otro framework. Lo importante a tener en cuenta es que vamos a estar haciendo peticiones POST en cuyo body se encontrarán los datos necesarios (email y password).
 
-## Qué es [Passport](http://www.passportjs.org/)
-
-Passport se prensenta en su sitio como un middleware para Node.js, utilizable en aplicaciones con Express. Se encarga de manejar la lógica de autenticación según el método que elijamos (JWT, Local, Facebook, etc.) y que se denominan estrategias. Básicamente captura la información del usuario que está en HTTP Headers y verifica que la autenticación sea correcta. Si la información es inválida automáticamente devuelve un code status 401, que significa No Autorizado.
-
 ## Creando passwords
 
 Para poder autenticar un usuario, primero hay que crearlo y guardar bien la contraseña.
@@ -62,7 +58,7 @@ module.exports = app;
 ```
 
 ```js
-// app/routes/index.js
+// server/routes/index.js
 const { Router } = require('express');
 const router = Router();
 
@@ -131,7 +127,7 @@ DIRECTORIO
 ```
 Y generamos nuestras funciones genPassword y validatePassword:
 ```js
-// app/utils
+// server/utils
 
 const crypto = require('crypto')
 
@@ -435,6 +431,7 @@ Apliquemos la teoría al código para asentar lo conocimientos sobre JWT. Cómo 
 El primer paso es instalar la librería base64url para codificar nuestra información.
 Creamos un nuevo directorio y primero escribimos el código para generar y enviar nuestro primer JWT:
 ```js
+// server/JWT/issueJWT.js
 const base64url = require('base64url');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -466,7 +463,8 @@ signatureFunction.write(headerBase64url + '.' + payloadBase64url);
 signatureFunction.end()
 // Luego cargamos nuestra clave privada
 const PRIV_KEY =  fs.readFileSync(__dirname + '/../cryptography/id_rsa_priv.pem','utf8');
-// Y generamos la firma de nuestro JWT
+// Y generamos la firma de nuestro JWT combinando el hash
+// con nuestra clave privada
 const signatureBase64 = signatureFunction.sign(PRIV_KEY, 'base64');
 // Convertimos el encoding de nuestra
 // firma de base64 a base64url
@@ -481,6 +479,7 @@ module.exports = {
 ```
 Para que nuestro JWT tenga sentido, ahora creamos nuestro código para verificar su validez:
 ```js
+// server/JWT/verify.js
 const base64url = require('base64url');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -513,7 +512,219 @@ console.log(signatureIsValid);
 
 Si hicimos todo bien, se imprimirá `true` en la consola y podemos dar por válido el JWT y la información que contiene. 
 
+#### jsonwebtoken
+
+Existe una librería que hace todo este trabajo por nosotros, sin tener, por ejemplo, que convertir entre base64 y base64url para poder hashear o desencriptar nuestro token. Esta libreria es `jsonwebtoken` y ahora que ya sabemos los conceptos de como se construye un JWT, veamos como podemos aplicar esta libreria:
+
+```js
+// server/JWT/jsonwebtoken.js
+// npm i jsonwebtoken
+const jwt = require('jsonwebtoken');
+const fs = require('fs');
+
+const PRIV_KEY = fs.readFileSync(__dirname + '/../cryptography/id_rsa_priv.pem','utf8');
+const PUB_KEY  = fs.readFileSync(__dirname + '/../cryptography/id_rsa_pub.pem','utf8');
+
+// Mismo payload que nuestro JWT manual
+const payload =  {
+    sub: '1',
+    name: 'Martin',
+    iat: 1516239022
+}
+
+// Método para generar el JWT
+// No necesitamos escribir el header
+// la librería se encarga automáticamente.
+const signedJWT = jwt.sign(payload, PRIV_KEY, { algorithm: 'RS256' });
+
+// Método para verificar la validez del token
+jwt.verify(signedJWT, PUB_KEY, { algorithm: ['RS256'] },(err, payload)=>{
+    console.log(err);
+    console.log(payload);
+});
+```
+
 Hasta aquí hemos visto como se generan y están formados los JWT y una breve explicación de como se usa la criptografía para crear y verificar tokens seguros. Ahora podemos adentrarnos en la aplicación de Passport JS, con la seguridad de entender que es lo que está sucediendo por dentro y no simplemente implementar y rogar por que todo funcione.
 
 ## Passport-jwt
+
+### Qué es [Passport](http://www.passportjs.org/)
+
+Passport se prensenta en su sitio como un middleware para Node.js, utilizable en aplicaciones con Express. Se encarga de manejar la lógica de autenticación según el método que elijamos (JWT, Local, Facebook, etc.) y que se denominan estrategias. 
+
+En nuestro caso, vamos a utilizar Passport para implementar una estrategia de JWT. Su funcionamiento interno lo vimos en las secciones anteriores de esta guía. Además de estar ahorrandonos escribir todo ese código en nuestras aplicaciones, Passport nos va a proveer directamente de un __middleware__ que se encargará de extraer el token de los headers, manejar errores y aceptar o rechazar la conexión dependiendo de la validez del JWT.
+
+### Configuración inicial
+
+Cada estrategia de Passport necesita de la librería passport y de su propio código. Por lo que antes de comenzar debemos ejecutar `npm i passport passport-jwt`.
+
+Una vez instaladas las librerías, vamos a continuar con el código que creamos en la primer sección de esta guía. Agregamos passport a app.js:
+```js
+// server/app.js
+
+const express = require('express');
+const app = express();
+
+const morgan = require('morgan');
+const cors = require('cors');
+
+/***** MIDDLEWARES ******/
+app.use(morgan('dev'));
+app.use(express.json());
+app.use(cors());
+
+/***** PASSPORT *********/
+const passport = require('passport');
+// Importamos la función de nuestro archivo passport.js que vamos 
+// a ver a continuación y le pasamos el objeto importado de 
+// la librería
+require('./passport')(passport)
+
+// Iniciamos passport, requerido para cualquier estrategia
+app.use(passport.initialize());
+
+/***** RUTAS ************/
+app.use('/',require('./routes'))
+
+module.exports = app;
+```
+### Verificación de JWT
+
+El siguiente código es el que se está importando en nuestra app antes de inicialiar passport. Es lo que se va a ejecutar cada vez que se encuentre el middleware `passport.authenticate()` en una ruta protegida y que va a validar o no el JWT de la petición.
+
+```js
+// server/passport
+
+const fs = require('fs');
+const passport = require('passport');
+const { User } = require('../db');
+// Importamos la estrategia
+const JwtStrategy = require('passport-jwt').Strategy;
+// Y el método para extraer el JWT de la petición
+const ExtractJwt = require('passport-jwt').ExtractJwt;
+
+const PUB_KEY =  fs.readFileSync(__dirname + '/../cryptography/id_rsa_pub.pem','utf8');
+
+// Definimos nuestras opciones. Todas las posibilidades
+// se encuentran en la documentación de passport-jwt
+// y están relacionadas con el uso de jsonwebtoken,
+// de donde se debe extraer el token y el algoritmo a utilizar
+const options = {
+    jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+    secretOrKey: PUB_KEY,
+    algorithms: ['RS256']
+};
+
+// Creamos una instancia de la estrategia a la que le pasamos nuestras opciones
+// y una función callback que se ejecuta si el JWT es válido.
+const strategy =  new JwtStrategy(options, (payload, done) => {
+    User.findOne({ where: { ID: payload.sub } })
+        .then((user)=>{
+            if (user) return done(null, user);
+            else return done(null, false)
+        }).catch((err)=>{ done(err,null) });
+});
+
+// Exportamos la función que toma un objeto passport
+// y lo devuelve con la estrategia que hemos definido
+module.exports = (passport) => {
+    passport.use(strategy)
+}
+```
+En este caso elegimos ese método de extracción del token porque vamos a agregarlo en los Authorization Header de nuestras peticiones.
+
+### Emitir JWT
+
+Necesitamos una función que genere un JWT válido para el usuario que está queriendo loguearse a nuestro sitio.
+En `server/routes/utils` (donde tenemos nuestra funciones de validación y generación de passwords) agregamos el siguiente código:
+
+```js
+// server/routes/utils/index.js
+
+const fs = require('fs');
+const jwt = require('jsonwebtoken');
+
+const PRIV_KEY = fs.readFileSync(__dirname + '/../../cryptography/id_rsa_priv.pem')
+
+const issueJWT = (user) => {
+    const ID = { user };
+    
+    // Definimos la duración de la validez del JWT en 1 día
+    // y agregamos el claim 'iat' que nos indica cuando fue emitido el token 
+    const expiresIn = '1d';
+    const payload =  {
+        sub: ID,
+        iat: Date.now()
+    };
+
+    // Usamos la librería jsonwebtoken para firmar nuestro token
+    // como hicimos antes y agregamos la opción de expiración
+    const signedToken = jwt.sign(payload, PRIV_KEY, { expiresIn, algorithm: 'RS256' });
+
+    // Agregamos la palabra Bearer delante del JWT, ya que definimos
+    // agregar nuestro token a las peticiones de esta manera
+    return {
+        token: 'Bearer ' + signedToken,
+        expires: expiresIn
+    }
+
+};
+
+module.exports = {
+    genPassword,
+    validatePassword,
+    issueJWT
+};
+```
+Y ahora que tenemos nuestro generador de JWT lo agregamos a la ruta `POST /signin`:
+
+```js
+// server/routes
+
+const { issueJWT } = require('./utils');
+
+router.post('/signin', async (req, res) => {
+    const { email, password } = req.body;
+
+    try {
+        const user = await User.findOne({ where: { email } });
+        if (!user) return res.status(401).json({ message: 'El usuario no existe.' })
+
+        const validation = validatePassword(password, user.hashed_password, user.salt)
+        if (!validation) return res.status(401).json({ message: 'Password incorrecta.' })
+
+        // Usamos la función y desestructuramos la respuesta 
+        // solo para ver lo que devuelve
+        const { token, expiresIn } = issueJWT(user)
+
+        // Agregamos el token y su duración en la respuesta
+        res.json({
+            success: true,
+            email: user.email,
+            token,
+            expiresIn
+        })
+    } catch(err) { res.sendStatus(500) }
+
+});
+```
+Si el usuario se ha logueado correctamente, se enviará el token correspondiente.
+El último paso de esta guía es aplicar el middleware de passport.
+Colocamos en los paramatros de `passport.authenticate()` colocamos primero el tipo de estrategia y luego `{ session: false }`, que le indica a Passport que no se está utilizando un sistema de sesiones, que podrían utilizarse con otras estrategias como la local.
+```js
+// server/routes
+router.get('/mydata', passport.authenticate('jwt',{ session: false }) ,(req, res) => {
+    res.json({ message: 'El Json Web Token es válido, felicitaciones!' })
+});
+
+```
+Un petición con un JWT luce de esta manera:
+```http
+GET http://localhost:3001/mydata
+Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsImlhdCI6MTYzMjg4NjEwOTM2NywiZXhwIjoxNjMyODg2MTk1NzY3fQ.JN0b3lbVGFz7jp_7IW0b4Fh2jrAWKdrlQ-4LIE9YXuXJ3J8mpbZDCfMYUGhtQLvVywZI-S5dLzTLsOkx1jESwTEeGfLY_tIZJ4gY_TayQTGriEN5TzNVncslAkzCu_bmBrCbHhItJk1amJ4xeNPiHzcqoO2SinSMaGzHdkz1GCJM6XaRI9OAaFXgaZ1X5U8YpT-riFfg8kzYJsJUUyoeWCDluujrO_u0JRtIE1yOztVRIgGoApFdMnXGlBvcFJiXt66E3v6mJz6A7HPilKw_6mpd7MzomD9EdkHZt0Hbp_v0yFHdkUi-8PGZbhWY7DOZOCEGmD9bWeuL9YoaFgIiDx5G7wP-3kDqv0t2dPnq6nNAxJ_jZqbopC0at3P9U_Uwq58HSara7PrZtV7RW3vGubK1pSnQuWmoFFXcgDeGUFJ7E7gt02JFhhvrAC--ND2QrF3TslMYtAjvefziXgixDu7TVM3VMSzmGMGQNbogrQyVHXgRg1XAJdjm3r97HpmgKPBdtRT5tIqjkvHfoxxEO2HKCfNpCn4n55tOzp1ZSPV_cnHyoN4u9gMt745LEsgJPDOetHqrbvLe5aTNIbTKIyuSZdCjV1dghk26fI6dGl4eKBW5jjMuMc2bqc6mIEvUata2fZk97O9d1YhLOoHfM45yjjRUye83XOHZuWXTaHQ
+```
+
+Si nuestro token es válido, la ruta responderá satisfactoriamente, en caso contrario, Passport se encargará de devolver un status 401 Unauthorized, impidiendo el acceso a la ruta solicitada.
+
+## Conclusión
 
